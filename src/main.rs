@@ -10,7 +10,7 @@ use colored::Colorize;
 use log::{error, info};
 
 fn main() {
-    env_logger::init();
+    // env_logger::init();
     info!("Starting folder locker application");
 
     let args = Args::new();

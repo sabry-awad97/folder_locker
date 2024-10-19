@@ -1,11 +1,9 @@
 use colored::*;
-use dialoguer::{theme::ColorfulTheme, Password};
+use dialoguer::{theme::ColorfulTheme, Password, Select};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, info, warn};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::thread;
-use std::time::Duration;
 
 use crate::error::LockerError;
 use crate::metadata::{read_metadata, remove_metadata, write_metadata};
@@ -39,29 +37,23 @@ impl FolderOperator {
     }
 
     fn check_folder_status(&self, is_locking: bool) -> Result<(), LockerError> {
-        let spinner = self.create_spinner("Checking folder status...");
-
         let (exists, status) = if is_locking {
-            (self.hidden_path.exists(), "already locked")
+            (self.hidden_path.exists(), "already secured")
         } else {
-            (!self.hidden_path.exists(), "not locked")
+            (!self.hidden_path.exists(), "not secured")
         };
 
         if exists {
-            spinner.finish_with_message(format!("Folder is {}.", status));
             warn!("Folder is {}: {:?}", status, self.hidden_path);
-            println!("{}", format!("Folder is {}.", status).yellow());
+            println!("{}", format!("📁 Folder is {}.", status).yellow().bold());
             return Ok(());
         }
 
         if !is_locking && !self.hidden_path.exists() {
-            spinner.finish_with_message("Folder is not locked.");
             error!("Cannot unlock folder: {:?} is not locked", self.hidden_path);
-            println!("{}", "Folder is not locked.".red());
+            println!("{}", "📂 Folder is not secured.".red().bold());
             return Err(LockerError::FolderNotLocked);
         }
-
-        spinner.finish_with_message("Folder status check complete.");
         Ok(())
     }
 
@@ -71,14 +63,10 @@ impl FolderOperator {
         let password = get_password()?;
         let hashed_password = hash_password(&password)?;
 
-        let pb = self.create_progress_bar(4);
-
-        self.perform_lock_steps(&pb, &hashed_password)?;
-
-        pb.finish_with_message("Folder locked successfully!");
+        self.perform_lock_steps(&hashed_password)?;
 
         info!("Folder locked successfully: {:?}", self.hidden_path);
-        println!("{}", "Folder locked successfully.".green().bold());
+        println!("{}", "🔒 Folder secured successfully!".green().bold());
         Ok(())
     }
 
@@ -86,16 +74,12 @@ impl FolderOperator {
         self.check_folder_status(false)?;
         self.verify_password()?;
 
-        println!("{}", "Password verified successfully!".green());
+        println!("{}", "🔑 Password verified successfully!".green().bold());
 
-        let pb = self.create_progress_bar(3);
-
-        self.perform_unlock_steps(&pb)?;
-
-        pb.finish_with_message("Folder unlocked successfully!");
+        self.perform_unlock_steps()?;
 
         info!("Folder unlocked successfully: {:?}", self.folder_path);
-        println!("{}", "Folder unlocked successfully.".green().bold());
+        println!("{}", "🔓 Folder unlocked successfully!".green().bold());
         Ok(())
     }
 
@@ -105,66 +89,34 @@ impl FolderOperator {
         let pb = ProgressBar::new_spinner();
         pb.set_style(
             ProgressStyle::default_spinner()
-                .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
-                .template("{spinner:.green} {msg}")
-                .unwrap()
+                .tick_chars("◐◓◑◒")
+                .template("{spinner:.magenta} {msg}")
+                .unwrap(),
         );
         pb.set_message(message.to_string());
         pb
     }
 
-    fn create_progress_bar(&self, steps: u64) -> ProgressBar {
-        let pb = ProgressBar::new(steps);
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
-                .unwrap()
-                .progress_chars("#>-"),
-        );
-        pb
-    }
-
-    fn perform_lock_steps(
-        &self,
-        pb: &ProgressBar,
-        hashed_password: &str,
-    ) -> Result<(), LockerError> {
-        let spinner = self.create_spinner("Preparing to lock folder...");
-        thread::sleep(Duration::from_secs(1));
-        spinner.finish_and_clear();
-        pb.inc(1);
+    fn perform_lock_steps(&self, hashed_password: &str) -> Result<(), LockerError> {
+        let spinner = self.create_spinner("🔍 Preparing to secure folder...");
 
         if self.folder_path.exists() {
-            let spinner = self.create_spinner("Renaming folder...");
             self.rename_folder(&self.folder_path, &self.hidden_path)?;
-            thread::sleep(Duration::from_secs(1));
-            spinner.finish_and_clear();
         } else {
-            let spinner = self.create_spinner("Creating hidden folder...");
             self.create_folder(&self.hidden_path)?;
-            thread::sleep(Duration::from_secs(1));
-            spinner.finish_and_clear();
         }
-        pb.inc(1);
 
-        let spinner = self.create_spinner("Writing metadata...");
         write_metadata(&self.hidden_path, hashed_password)?;
-        thread::sleep(Duration::from_secs(1));
-        spinner.finish_and_clear();
-        pb.inc(1);
 
-        let spinner = self.create_spinner("Setting folder attributes...");
         PermissionManager::set_attributes(self.hidden_path.to_str().unwrap())?;
-        thread::sleep(Duration::from_secs(1));
-        spinner.finish_and_clear();
-        pb.inc(1);
 
+        spinner.finish();
         Ok(())
     }
 
     fn verify_password(&self) -> Result<(), LockerError> {
         let input = Password::with_theme(&ColorfulTheme::default())
-            .with_prompt("Enter password")
+            .with_prompt("🔑 Enter password")
             .interact()
             .map_err(|_| LockerError::PasswordOperationFailed {
                 operation: "input".to_string(),
@@ -178,34 +130,25 @@ impl FolderOperator {
                 "Invalid password attempt for folder: {:?}",
                 self.hidden_path
             );
-            println!("{}", "Invalid password!".red().bold());
+            println!("{}", "❌ Invalid password!".red().bold());
             return Err(LockerError::InvalidPassword);
         }
 
         Ok(())
     }
 
-    fn perform_unlock_steps(&self, pb: &ProgressBar) -> Result<(), LockerError> {
-        let spinner = self.create_spinner("Removing folder attributes...");
+    fn perform_unlock_steps(&self) -> Result<(), LockerError> {
+        let spinner = self.create_spinner("📂 Restoring folder...");
         PermissionManager::remove_attributes(self.hidden_path.to_str().unwrap())?;
-        thread::sleep(Duration::from_secs(1));
-        spinner.finish_and_clear();
-        pb.inc(1);
 
-        let spinner = self.create_spinner("Removing metadata...");
         remove_metadata(&self.hidden_path)?;
-        thread::sleep(Duration::from_secs(1));
-        spinner.finish_and_clear();
-        pb.inc(1);
 
-        let spinner = self.create_spinner("Renaming folder...");
         let unlocked_path = self
             .folder_path
             .with_file_name(self.folder_path.file_name().unwrap().to_str().unwrap());
         self.rename_folder(&self.hidden_path, &unlocked_path)?;
-        thread::sleep(Duration::from_secs(1));
-        spinner.finish_and_clear();
-        pb.inc(1);
+
+        spinner.finish();
 
         Ok(())
     }
@@ -217,7 +160,7 @@ impl FolderOperator {
             error: e.to_string(),
         })?;
         info!("Locker folder created: {:?}", path);
-        println!("{}", "Locker folder created.".green());
+        println!("{}", "📁 Locker folder created.".green());
         Ok(())
     }
 
@@ -232,9 +175,37 @@ impl FolderOperator {
 }
 
 pub fn lock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
-    FolderOperator::new(folder)?.lock()
+    let options = vec!["🔒 Lock folder", "❌ Cancel"];
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Choose an action")
+        .items(&options)
+        .default(0)
+        .interact()
+        .unwrap();
+
+    match selection {
+        0 => FolderOperator::new(folder)?.lock(),
+        _ => {
+            println!("Operation cancelled.");
+            Ok(())
+        }
+    }
 }
 
 pub fn unlock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
-    FolderOperator::new(folder)?.unlock()
+    let options = vec!["🔓 Unlock folder", "❌ Cancel"];
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Choose an action")
+        .items(&options)
+        .default(0)
+        .interact()
+        .unwrap();
+
+    match selection {
+        0 => FolderOperator::new(folder)?.unlock(),
+        _ => {
+            println!("Operation cancelled.");
+            Ok(())
+        }
+    }
 }
