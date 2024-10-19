@@ -35,4 +35,8 @@ pub enum LockerError {
     /// An error occurred during bcrypt operations.
     #[error("Bcrypt error: {0}")]
     BcryptError(#[from] bcrypt::BcryptError),
+
+    /// An error occurred during template parsing or rendering.
+    #[error("Template error: {0}")]
+    TemplateError(#[from] indicatif::style::TemplateError),
 }

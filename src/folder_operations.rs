@@ -1,8 +1,11 @@
 use colored::*;
 use dialoguer::{theme::ColorfulTheme, Password};
+use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, info, warn};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 use crate::error::LockerError;
 use crate::metadata::{read_metadata, remove_metadata, write_metadata};
@@ -35,6 +38,15 @@ impl FolderOperator {
     }
 
     fn check_folder_status(&self, is_locking: bool) -> Result<(), LockerError> {
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
+                .template("{spinner:.green} {msg}")?,
+        );
+        spinner.set_message("Checking folder status...".to_string());
+        spinner.enable_steady_tick(Duration::from_millis(100));
+
         let (exists, _action, status) = if is_locking {
             (self.hidden_path.exists(), "lock", "already locked")
         } else {
@@ -53,6 +65,7 @@ impl FolderOperator {
             return Err(LockerError::FolderNotLocked);
         }
 
+        spinner.finish_with_message("Folder status check complete.".to_string());
         Ok(())
     }
 
@@ -62,15 +75,40 @@ impl FolderOperator {
         let password = get_password()?;
         let hashed_password = hash_password(&password)?;
 
+        let pb = ProgressBar::new(4);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+                )?
+                .progress_chars("#>-"),
+        );
+
+        pb.set_message("Preparing to lock folder...");
+        thread::sleep(Duration::from_millis(500));
+        pb.inc(1);
+
         if self.folder_path.exists() {
+            pb.set_message("Renaming folder...");
             self.rename_folder(&self.folder_path, &self.hidden_path)?;
         } else {
+            pb.set_message("Creating hidden folder...");
             self.create_folder(&self.hidden_path)?;
         }
+        thread::sleep(Duration::from_millis(500));
+        pb.inc(1);
 
+        pb.set_message("Writing metadata...");
         write_metadata(&self.hidden_path, &hashed_password)?;
+        thread::sleep(Duration::from_millis(500));
+        pb.inc(1);
 
+        pb.set_message("Setting folder attributes...");
         PermissionManager::set_attributes(self.hidden_path.to_str().unwrap())?;
+        thread::sleep(Duration::from_millis(500));
+        pb.inc(1);
+
+        pb.finish_with_message("Folder locked successfully!");
 
         info!("Folder locked successfully: {:?}", self.hidden_path);
         println!("{}", "Folder locked successfully.".green().bold());
@@ -79,6 +117,15 @@ impl FolderOperator {
 
     fn unlock(&self) -> Result<(), LockerError> {
         self.check_folder_status(false)?;
+
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ")
+                .template("{spinner:.green} {msg}")?,
+        );
+        spinner.set_message("Verifying password...");
+        spinner.enable_steady_tick(Duration::from_millis(100));
 
         let input = Password::with_theme(&ColorfulTheme::default())
             .with_prompt("Enter password")
@@ -91,6 +138,7 @@ impl FolderOperator {
         let stored_password = read_metadata(&self.hidden_path)?;
 
         if !verify_password(&input, &stored_password)? {
+            spinner.finish_with_message("Invalid password!");
             error!(
                 "Invalid password attempt for folder: {:?}",
                 self.hidden_path
@@ -99,14 +147,36 @@ impl FolderOperator {
             return Err(LockerError::InvalidPassword);
         }
 
+        spinner.finish_with_message("Password verified successfully!");
+
+        let pb = ProgressBar::new(3);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+                )?
+                .progress_chars("#>-"),
+        );
+
+        pb.set_message("Removing folder attributes...");
         PermissionManager::remove_attributes(self.hidden_path.to_str().unwrap())?;
+        thread::sleep(Duration::from_millis(500));
+        pb.inc(1);
 
+        pb.set_message("Removing metadata...");
         remove_metadata(&self.hidden_path)?;
+        thread::sleep(Duration::from_millis(500));
+        pb.inc(1);
 
+        pb.set_message("Renaming folder...");
         let unlocked_path = self
             .folder_path
             .with_file_name(self.folder_path.file_name().unwrap().to_str().unwrap());
         self.rename_folder(&self.hidden_path, &unlocked_path)?;
+        thread::sleep(Duration::from_millis(500));
+        pb.inc(1);
+
+        pb.finish_with_message("Folder unlocked successfully!");
 
         info!("Folder unlocked successfully: {:?}", unlocked_path);
         println!("{}", "Folder unlocked successfully.".green().bold());
