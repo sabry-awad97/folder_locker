@@ -2,6 +2,8 @@ mod cli;
 mod error;
 mod folder_operations;
 mod utils;
+mod metadata;
+mod password;
 
 use crate::cli::Args;
 use colored::Colorize;
