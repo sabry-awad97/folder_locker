@@ -255,20 +255,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
 
 [[package]]
-name = "folder_locker"
-version = "0.1.0"
-dependencies = [
- "bcrypt",
- "clap",
- "colored",
- "dialoguer",
- "env_logger",
- "indicatif",
- "log",
- "thiserror",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -355,6 +341,20 @@ name = "linux-raw-sys"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
+
+[[package]]
+name = "locker"
+version = "0.1.0"
+dependencies = [
+ "bcrypt",
+ "clap",
+ "colored",
+ "dialoguer",
+ "env_logger",
+ "indicatif",
+ "log",
+ "thiserror",
+]
 
 [[package]]
 name = "log"
