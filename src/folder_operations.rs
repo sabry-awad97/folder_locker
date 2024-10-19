@@ -2,33 +2,49 @@ use colored::*;
 use dialoguer::{theme::ColorfulTheme, Password};
 use log::{error, info, warn};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::LockerError;
 use crate::metadata::{read_metadata, remove_metadata, write_metadata};
 use crate::password::{get_password, hash_password, verify_password};
 use crate::utils::set_folder_attributes;
 
-pub fn lock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
+// New reusable functions
+fn get_folder_paths(folder: Option<&Path>) -> Result<(PathBuf, PathBuf), LockerError> {
     let folder_path = folder.unwrap_or_else(|| Path::new("."));
     let folder_name = folder_path
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or(LockerError::InvalidFolderName)?;
     let hidden_path = folder_path.with_file_name(format!(".{}", folder_name));
+    Ok((folder_path.to_path_buf(), hidden_path))
+}
 
-    if hidden_path.exists() {
-        warn!("Folder is already locked: {:?}", hidden_path);
-        println!("{}", "Folder is already locked.".yellow());
+fn check_folder_status(hidden_path: &Path, is_locking: bool) -> Result<(), LockerError> {
+    let (exists, _action, status) = if is_locking {
+        (hidden_path.exists(), "locked", "already locked")
+    } else {
+        (!hidden_path.exists(), "unlocked", "not locked")
+    };
+
+    if exists {
+        warn!("Folder is {}: {:?}", status, hidden_path);
+        println!("{}", format!("Folder is {}.", status).yellow());
         return Ok(());
     }
+    Ok(())
+}
+
+pub fn lock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
+    let (_folder_path, hidden_path) = get_folder_paths(folder)?;
+    check_folder_status(&hidden_path, true)?;
 
     let password = get_password()?;
     let hashed_password = hash_password(&password)?;
 
     fs::create_dir(&hidden_path).map_err(|e| LockerError::FileOperationFailed {
         operation: "create".to_string(),
-        path: hidden_path.clone(),
+        path: hidden_path.to_path_buf(),
         error: e.to_string(),
     })?;
     info!("Locker folder created: {:?}", hidden_path);
@@ -43,18 +59,8 @@ pub fn lock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
 }
 
 pub fn unlock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
-    let folder_path = folder.unwrap_or_else(|| Path::new("."));
-    let folder_name = folder_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or(LockerError::InvalidFolderName)?;
-    let hidden_path = folder_path.with_file_name(format!(".{}", folder_name));
-
-    if !hidden_path.exists() {
-        warn!("No locked folder found: {:?}", hidden_path);
-        println!("{}", "No locked folder found.".yellow());
-        return Ok(());
-    }
+    let (folder_path, hidden_path) = get_folder_paths(folder)?;
+    check_folder_status(&hidden_path, false)?;
 
     let input = Password::with_theme(&ColorfulTheme::default())
         .with_prompt("Enter password")
@@ -74,7 +80,15 @@ pub fn unlock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
 
     remove_metadata(&hidden_path)?;
 
-    info!("Folder unlocked successfully: {:?}", hidden_path);
+    // Remove the leading dot from the folder name
+    let unlocked_path = folder_path.with_file_name(folder_path.file_name().unwrap().to_str().unwrap());
+    fs::rename(&hidden_path, &unlocked_path).map_err(|e| LockerError::FileOperationFailed {
+        operation: "rename".to_string(),
+        path: hidden_path.to_path_buf(),
+        error: e.to_string(),
+    })?;
+
+    info!("Folder unlocked successfully: {:?}", unlocked_path);
     println!("{}", "Folder unlocked successfully.".green().bold());
     Ok(())
 }
