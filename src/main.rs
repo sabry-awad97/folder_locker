@@ -1,7 +1,11 @@
 use std::fs;
-use std::io::{self, Write, Read};
+use std::io::Read;
 use std::path::Path;
 
+use bcrypt::{hash, verify, DEFAULT_COST};
+use clap::Parser;
+use colored::*;
+use dialoguer::{theme::ColorfulTheme, Password, Select};
 use winapi::um::fileapi::SetFileAttributesW;
 use winapi::um::winnt::{FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM};
 
@@ -9,90 +13,111 @@ const LOCKER_NAME: &str = "Locker";
 const HIDDEN_NAME: &str = ".Locker";
 const METADATA_FILE: &str = ".locker_metadata";
 
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    #[clap(subcommand)]
+    action: Option<Action>,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum Action {
+    Lock,
+    Unlock,
+}
+
 fn main() {
+    let args = Args::parse();
+
+    match args.action {
+        Some(Action::Lock) => lock_folder(),
+        Some(Action::Unlock) => unlock_folder(),
+        None => interactive_mode(),
+    }
+}
+
+fn interactive_mode() {
     loop {
-        println!("1. Lock Folder");
-        println!("2. Unlock Folder");
-        println!("3. Exit");
-        print!("Choose an option: ");
-        io::stdout().flush().unwrap();
+        let choices = &["Lock Folder", "Unlock Folder", "Exit"];
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Choose an action")
+            .items(choices)
+            .default(0)
+            .interact()
+            .unwrap();
 
-        let mut choice = String::new();
-        io::stdin().read_line(&mut choice).unwrap();
-
-        match choice.trim() {
-            "1" => lock_folder(),
-            "2" => unlock_folder(),
-            "3" => break,
-            _ => println!("Invalid choice. Please try again."),
+        match selection {
+            0 => lock_folder(),
+            1 => unlock_folder(),
+            2 => break,
+            _ => unreachable!(),
         }
+        println!();
     }
 }
 
 fn lock_folder() {
     if Path::new(HIDDEN_NAME).exists() {
-        println!("Folder is already locked.");
+        println!("{}", "Folder is already locked.".yellow());
         return;
     }
 
     if !Path::new(LOCKER_NAME).exists() {
         fs::create_dir(LOCKER_NAME).unwrap();
-        println!("Locker folder created.");
+        println!("{}", "Locker folder created.".green());
     }
 
-    print!("Enter a password to lock the folder: ");
-    io::stdout().flush().unwrap();
-    let mut password = String::new();
-    io::stdin().read_line(&mut password).unwrap();
-    let password = password.trim().to_string();
+    let password = Password::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter a password to lock the folder")
+        .with_confirmation("Confirm password", "Passwords don't match")
+        .interact()
+        .unwrap();
+
+    let hashed_password = hash(password, DEFAULT_COST).unwrap();
 
     let metadata_path = Path::new(LOCKER_NAME).join(METADATA_FILE);
-    fs::write(&metadata_path, &password).unwrap();
+    fs::write(&metadata_path, &hashed_password).unwrap();
     set_file_attributes(&metadata_path);
 
     fs::rename(LOCKER_NAME, HIDDEN_NAME).unwrap();
     set_folder_attributes(HIDDEN_NAME);
-    println!("Folder locked successfully.");
+    println!("{}", "Folder locked successfully.".green().bold());
 }
 
 fn unlock_folder() {
     if !Path::new(HIDDEN_NAME).exists() {
-        println!("No locked folder found.");
+        println!("{}", "No locked folder found.".yellow());
         return;
     }
 
-    print!("Enter password: ");
-    io::stdout().flush().unwrap();
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-    let input = input.trim();
+    let input = Password::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter password")
+        .interact()
+        .unwrap();
 
     let metadata_path = Path::new(HIDDEN_NAME).join(METADATA_FILE);
     let mut stored_password = String::new();
-    fs::File::open(&metadata_path).unwrap().read_to_string(&mut stored_password).unwrap();
+    fs::File::open(&metadata_path)
+        .unwrap()
+        .read_to_string(&mut stored_password)
+        .unwrap();
 
-    if input != stored_password.trim() {
-        println!("Invalid password!");
+    if !verify(input, &stored_password).unwrap() {
+        println!("{}", "Invalid password!".red().bold());
         return;
     }
 
     remove_folder_attributes(HIDDEN_NAME);
     fs::rename(HIDDEN_NAME, LOCKER_NAME).unwrap();
     fs::remove_file(Path::new(LOCKER_NAME).join(METADATA_FILE)).unwrap();
-    println!("Folder unlocked successfully.");
+    println!("{}", "Folder unlocked successfully.".green().bold());
 }
 
 fn set_file_attributes(path: &Path) {
     use std::os::windows::ffi::OsStrExt;
-    let wide: Vec<u16> = path.as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect();
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
     unsafe {
-        SetFileAttributesW(
-            wide.as_ptr(),
-            FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM,
-        );
+        SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM);
     }
 }
 
