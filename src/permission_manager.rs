@@ -45,8 +45,8 @@ impl PermissionManager {
             "*S-1-1-0:(DE,DC)",
         ])?;
 
-        // Make the folder hidden
-        Self::attrib(&["+H", path_str])
+        // Make the folder hidden and system
+        Self::attrib(&["+H", "+S", path_str])
     }
 
     /// Removes custom attributes, resets permissions, and unhides a file or folder.
@@ -72,7 +72,7 @@ impl PermissionManager {
     /// default permissions and allowing normal access to the file or folder.
     pub fn remove_attributes(name: &str) -> io::Result<()> {
         Self::icacls(&[name, "/reset", "/T"])?;
-        Self::attrib(&["-H", name])
+        Self::attrib(&["-H", "-S", name])
     }
 
     /// Executes the `icacls` command with the given arguments.
