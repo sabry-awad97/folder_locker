@@ -5,9 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::LockerError;
-use crate::file_manager::FileManager;
 use crate::metadata::{read_metadata, remove_metadata, write_metadata};
 use crate::password::{get_password, hash_password, verify_password};
+use crate::permission_manager::PermissionManager;
 
 // New reusable functions
 fn get_folder_paths(folder: Option<&Path>) -> Result<(PathBuf, PathBuf), LockerError> {
@@ -58,10 +58,10 @@ pub fn lock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
     println!("{}", "Locker folder created.".green());
 
     write_metadata(&hidden_path, &hashed_password)?;
-    if let Err(e) = FileManager::set_folder_attributes(hidden_path.to_str().unwrap()) {
+    if let Err(e) = PermissionManager::set_folder_attributes(hidden_path.to_str().unwrap()) {
         error!("Failed to set folder attributes: {}", e);
     };
-    if let Err(e) = FileManager::prevent_folder_deletion(hidden_path.to_str().unwrap()) {
+    if let Err(e) = PermissionManager::prevent_folder_deletion(hidden_path.to_str().unwrap()) {
         error!("Failed to prevent folder deletion: {}", e);
     };
 
@@ -90,7 +90,7 @@ pub fn unlock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
         return Err(LockerError::InvalidPassword);
     }
 
-    if let Err(e) = FileManager::allow_folder_deletion(hidden_path.to_str().unwrap()) {
+    if let Err(e) = PermissionManager::allow_folder_deletion(hidden_path.to_str().unwrap()) {
         error!("Failed to allow folder deletion: {}", e);
     };
 
