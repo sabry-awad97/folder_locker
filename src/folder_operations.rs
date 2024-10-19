@@ -84,12 +84,9 @@ impl FolderOperator {
 
     fn unlock(&self) -> Result<(), LockerError> {
         self.check_folder_status(false)?;
+        self.verify_password()?;
 
-        let spinner = self.create_spinner("Verifying password...")?;
-
-        self.verify_password(&spinner)?;
-
-        spinner.finish_with_message("Password verified successfully!");
+        println!("{}", "Password verified successfully!".green());
 
         let pb = self.create_progress_bar(3)?;
 
@@ -160,7 +157,7 @@ impl FolderOperator {
         Ok(())
     }
 
-    fn verify_password(&self, spinner: &ProgressBar) -> Result<(), LockerError> {
+    fn verify_password(&self) -> Result<(), LockerError> {
         let input = Password::with_theme(&ColorfulTheme::default())
             .with_prompt("Enter password")
             .interact()
@@ -172,7 +169,6 @@ impl FolderOperator {
         let stored_password = read_metadata(&self.hidden_path)?;
 
         if !verify_password(&input, &stored_password)? {
-            spinner.finish_with_message("Invalid password!");
             error!(
                 "Invalid password attempt for folder: {:?}",
                 self.hidden_path
