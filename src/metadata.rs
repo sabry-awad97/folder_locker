@@ -24,7 +24,7 @@ pub fn write_metadata(hidden_path: &Path, hashed_password: &str) -> Result<(), L
             path: metadata_path.clone(),
             error: e.to_string(),
         })?;
-    if let Err(e) = PermissionManager::set_file_attributes(&metadata_path) {
+    if let Err(e) = PermissionManager::set_attributes(&metadata_path) {
         error!("Failed to set file attributes: {}", e);
         println!("{}", "Failed to set file attributes.".red());
     };
@@ -45,7 +45,7 @@ pub fn read_metadata(hidden_path: &Path) -> Result<String, LockerError> {
 }
 
 pub fn remove_metadata(hidden_path: &Path) -> Result<(), LockerError> {
-    if let Err(e) = PermissionManager::remove_folder_attributes(hidden_path.to_str().unwrap()) {
+    if let Err(e) = PermissionManager::remove_attributes(hidden_path.to_str().unwrap()) {
         error!("Failed to remove folder attributes: {}", e);
         println!("{}", "Failed to remove folder attributes.".red());
     };

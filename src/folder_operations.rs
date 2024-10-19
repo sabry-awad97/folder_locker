@@ -49,20 +49,12 @@ pub fn lock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
     let password = get_password()?;
     let hashed_password = hash_password(&password)?;
 
-    fs::create_dir(&hidden_path).map_err(|e| LockerError::FileOperationFailed {
-        operation: "create".to_string(),
-        path: hidden_path.to_path_buf(),
-        error: e.to_string(),
-    })?;
-    info!("Locker folder created: {:?}", hidden_path);
-    println!("{}", "Locker folder created.".green());
+    create_folder(&hidden_path)?;
 
     write_metadata(&hidden_path, &hashed_password)?;
-    if let Err(e) = PermissionManager::set_folder_attributes(hidden_path.to_str().unwrap()) {
+
+    if let Err(e) = PermissionManager::set_attributes(hidden_path.to_str().unwrap()) {
         error!("Failed to set folder attributes: {}", e);
-    };
-    if let Err(e) = PermissionManager::prevent_folder_deletion(hidden_path.to_str().unwrap()) {
-        error!("Failed to prevent folder deletion: {}", e);
     };
 
     info!("Folder locked successfully: {:?}", hidden_path);
@@ -90,7 +82,7 @@ pub fn unlock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
         return Err(LockerError::InvalidPassword);
     }
 
-    if let Err(e) = PermissionManager::allow_folder_deletion(hidden_path.to_str().unwrap()) {
+    if let Err(e) = PermissionManager::remove_attributes(hidden_path.to_str().unwrap()) {
         error!("Failed to allow folder deletion: {}", e);
     };
 
@@ -99,13 +91,29 @@ pub fn unlock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
     // Remove the leading dot from the folder name
     let unlocked_path =
         folder_path.with_file_name(folder_path.file_name().unwrap().to_str().unwrap());
-    fs::rename(&hidden_path, &unlocked_path).map_err(|e| LockerError::FileOperationFailed {
-        operation: "rename".to_string(),
-        path: hidden_path.to_path_buf(),
-        error: e.to_string(),
-    })?;
+    rename_folder(&hidden_path, &unlocked_path)?;
 
     info!("Folder unlocked successfully: {:?}", unlocked_path);
     println!("{}", "Folder unlocked successfully.".green().bold());
+    Ok(())
+}
+
+fn create_folder(path: &Path) -> Result<(), LockerError> {
+    fs::create_dir(path).map_err(|e| LockerError::FileOperationFailed {
+        operation: "create".to_string(),
+        path: path.to_path_buf(),
+        error: e.to_string(),
+    })?;
+    info!("Locker folder created: {:?}", path);
+    println!("{}", "Locker folder created.".green());
+    Ok(())
+}
+
+fn rename_folder(from: &Path, to: &Path) -> Result<(), LockerError> {
+    fs::rename(from, to).map_err(|e| LockerError::FileOperationFailed {
+        operation: "rename".to_string(),
+        path: from.to_path_buf(),
+        error: e.to_string(),
+    })?;
     Ok(())
 }
