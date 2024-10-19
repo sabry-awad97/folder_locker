@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Write, Read};
 use std::path::Path;
 
 use winapi::um::fileapi::SetFileAttributesW;
@@ -7,7 +7,7 @@ use winapi::um::winnt::{FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_READONLY, FILE_ATT
 
 const LOCKER_NAME: &str = "Locker";
 const HIDDEN_NAME: &str = ".Locker";
-const PASSWORD: &str = "123456";
+const METADATA_FILE: &str = ".locker_metadata";
 
 fn main() {
     loop {
@@ -40,6 +40,16 @@ fn lock_folder() {
         println!("Locker folder created.");
     }
 
+    print!("Enter a password to lock the folder: ");
+    io::stdout().flush().unwrap();
+    let mut password = String::new();
+    io::stdin().read_line(&mut password).unwrap();
+    let password = password.trim().to_string();
+
+    let metadata_path = Path::new(LOCKER_NAME).join(METADATA_FILE);
+    fs::write(&metadata_path, &password).unwrap();
+    set_file_attributes(&metadata_path);
+
     fs::rename(LOCKER_NAME, HIDDEN_NAME).unwrap();
     set_folder_attributes(HIDDEN_NAME);
     println!("Folder locked successfully.");
@@ -55,15 +65,35 @@ fn unlock_folder() {
     io::stdout().flush().unwrap();
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
+    let input = input.trim();
 
-    if input.trim() != PASSWORD {
+    let metadata_path = Path::new(HIDDEN_NAME).join(METADATA_FILE);
+    let mut stored_password = String::new();
+    fs::File::open(&metadata_path).unwrap().read_to_string(&mut stored_password).unwrap();
+
+    if input != stored_password.trim() {
         println!("Invalid password!");
         return;
     }
 
     remove_folder_attributes(HIDDEN_NAME);
     fs::rename(HIDDEN_NAME, LOCKER_NAME).unwrap();
+    fs::remove_file(Path::new(LOCKER_NAME).join(METADATA_FILE)).unwrap();
     println!("Folder unlocked successfully.");
+}
+
+fn set_file_attributes(path: &Path) {
+    use std::os::windows::ffi::OsStrExt;
+    let wide: Vec<u16> = path.as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    unsafe {
+        SetFileAttributesW(
+            wide.as_ptr(),
+            FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM,
+        );
+    }
 }
 
 fn set_folder_attributes(name: &str) {
