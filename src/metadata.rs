@@ -4,11 +4,11 @@ use std::{
     path::Path,
 };
 
-use crate::{
-    error::LockerError,
-    utils::{remove_folder_attributes, set_file_attributes},
-};
+use colored::Colorize;
+use log::error;
 
+use crate::error::LockerError;
+use crate::file_manager::FileManager;
 pub const METADATA_FILE: &str = ".locker_metadata";
 
 pub fn write_metadata(hidden_path: &Path, hashed_password: &str) -> Result<(), LockerError> {
@@ -24,7 +24,10 @@ pub fn write_metadata(hidden_path: &Path, hashed_password: &str) -> Result<(), L
             path: metadata_path.clone(),
             error: e.to_string(),
         })?;
-    set_file_attributes(&metadata_path);
+    if let Err(e) = FileManager::set_file_attributes(&metadata_path) {
+        error!("Failed to set file attributes: {}", e);
+        println!("{}", "Failed to set file attributes.".red());
+    };
     Ok(())
 }
 
@@ -42,7 +45,10 @@ pub fn read_metadata(hidden_path: &Path) -> Result<String, LockerError> {
 }
 
 pub fn remove_metadata(hidden_path: &Path) -> Result<(), LockerError> {
-    remove_folder_attributes(hidden_path.to_str().unwrap());
+    if let Err(e) = FileManager::remove_folder_attributes(hidden_path.to_str().unwrap()) {
+        error!("Failed to remove folder attributes: {}", e);
+        println!("{}", "Failed to remove folder attributes.".red());
+    };
     let metadata_path = hidden_path.join(METADATA_FILE);
     std::fs::remove_file(metadata_path).map_err(|e| LockerError::FileOperationFailed {
         operation: "remove".to_string(),

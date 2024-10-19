@@ -12,6 +12,10 @@ pub enum LockerError {
     #[error("Invalid password: Authentication failed")]
     InvalidPassword,
 
+    /// The folder is not locked.
+    #[error("Folder is not locked")]
+    FolderNotLocked,
+
     /// Failed to perform a file or folder operation at the specified path.
     #[error("Failed to {operation} at {path}: {error}")]
     FileOperationFailed {

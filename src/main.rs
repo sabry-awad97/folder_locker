@@ -1,7 +1,7 @@
 mod cli;
 mod error;
 mod folder_operations;
-mod utils;
+mod file_manager;
 mod metadata;
 mod password;
 
