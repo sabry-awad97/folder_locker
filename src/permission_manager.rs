@@ -5,10 +5,10 @@ use std::process::Command;
 pub struct PermissionManager;
 
 impl PermissionManager {
-    /// Sets specific attributes on a file or folder to restrict access.
+    /// Sets specific attributes on a file or folder to restrict access and make it hidden.
     ///
     /// This function modifies the access control list (ACL) of the specified path
-    /// to enhance security and restrict access. Here's what each argument does:
+    /// to enhance security, restrict access, and make the folder hidden. Here's what each argument does:
     ///
     /// - `/inheritance:d`: Disables inheritance from parent objects.
     /// - `/grant:r`: Grants read-only access.
@@ -26,13 +26,14 @@ impl PermissionManager {
     ///
     /// # Errors
     ///
-    /// Returns an error if the path is invalid or if the `icacls` command fails.
+    /// Returns an error if the path is invalid or if the `icacls` or `attrib` commands fail.
     pub fn set_attributes<P: AsRef<Path>>(path: P) -> io::Result<()> {
         let path_str = path
             .as_ref()
             .to_str()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid path"))?;
 
+        // Set ACL permissions
         Self::icacls(&[
             path_str,
             "/inheritance:d",
@@ -42,14 +43,17 @@ impl PermissionManager {
             "*S-1-1-0",
             "/deny",
             "*S-1-1-0:(DE,DC)",
-        ])
+        ])?;
+
+        // Make the folder hidden
+        Self::attrib(&["+H", path_str])
     }
 
-    /// Removes custom attributes and resets permissions on a file or folder.
+    /// Removes custom attributes, resets permissions, and unhides a file or folder.
     ///
     /// This function uses the `icacls` command to reset the access control lists (ACLs)
-    /// on the specified file or folder to their inherited values. It effectively
-    /// removes any custom permissions that were previously set.
+    /// on the specified file or folder to their inherited values, and removes the hidden attribute.
+    /// It effectively removes any custom permissions that were previously set and makes the folder visible.
     ///
     /// # Arguments
     ///
@@ -61,15 +65,14 @@ impl PermissionManager {
     ///
     /// # How it works
     ///
-    /// 1. Calls `Self::icacls` with the following arguments:
-    ///    - The path of the file or folder (`name`)
-    ///    - `/reset`: Resets the ACLs to inherited ACLs
-    ///    - `/T`: Applies the operation to all subfolders and files (for directories)
+    /// 1. Calls `Self::icacls` to reset ACLs
+    /// 2. Calls `Self::attrib` to remove the hidden attribute
     ///
     /// This effectively undoes the changes made by `set_attributes`, restoring
     /// default permissions and allowing normal access to the file or folder.
     pub fn remove_attributes(name: &str) -> io::Result<()> {
-        Self::icacls(&[name, "/reset", "/T"])
+        Self::icacls(&[name, "/reset", "/T"])?;
+        Self::attrib(&["-H", name])
     }
 
     /// Executes the `icacls` command with the given arguments.
@@ -86,16 +89,33 @@ impl PermissionManager {
     ///
     /// * `Ok(())` if the command executes successfully.
     /// * `Err(io::Error)` if the command fails, containing the error message from stderr.
-    ///
-    /// # How it works
-    ///
-    /// 1. Creates a new `Command` for "icacls" with the given arguments.
-    /// 2. Executes the command and captures its output.
-    /// 3. Checks if the command was successful (exit status 0).
-    /// 4. If successful, returns `Ok(())`.
-    /// 5. If unsuccessful, returns an `Err` with the error message from stderr.
     fn icacls(args: &[&str]) -> io::Result<()> {
         let output = Command::new("icacls").args(args).output()?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                String::from_utf8_lossy(&output.stderr),
+            ))
+        }
+    }
+
+    /// Executes the `attrib` command with the given arguments.
+    ///
+    /// This function is used to change attributes of files or folders in Windows systems.
+    /// It runs the `attrib` command-line tool with the provided arguments.
+    ///
+    /// # Arguments
+    ///
+    /// * `args` - A slice of string slices containing the arguments to pass to `attrib`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the command executes successfully.
+    /// * `Err(io::Error)` if the command fails, containing the error message from stderr.
+    fn attrib(args: &[&str]) -> io::Result<()> {
+        let output = Command::new("attrib").args(args).output()?;
         if output.status.success() {
             Ok(())
         } else {

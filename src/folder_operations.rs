@@ -43,13 +43,17 @@ fn check_folder_status(hidden_path: &Path, is_locking: bool) -> Result<(), Locke
 }
 
 pub fn lock_folder(folder: Option<&Path>) -> Result<(), LockerError> {
-    let (_folder_path, hidden_path) = get_folder_paths(folder)?;
+    let (folder_path, hidden_path) = get_folder_paths(folder)?;
     check_folder_status(&hidden_path, true)?;
 
     let password = get_password()?;
     let hashed_password = hash_password(&password)?;
 
-    create_folder(&hidden_path)?;
+    if folder_path.exists() {
+        rename_folder(&folder_path, &hidden_path)?;
+    } else {
+        create_folder(&hidden_path)?;
+    }
 
     write_metadata(&hidden_path, &hashed_password)?;
 
